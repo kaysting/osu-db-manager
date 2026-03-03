@@ -1,0 +1,18 @@
+{
+  "name": "osu-db-manager",
+  "version": "1.0.0",
+  "description": "Read and write osu!standard and lazer database files with a single API.",
+  "license": "Apache-2.0",
+  "author": "Kayla Kersting",
+  "type": "commonjs",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "ticks-to-date": "^1.0.6"
+  }
+}
