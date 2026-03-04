@@ -10,6 +10,7 @@
  */
 
 const fs = require('fs');
+const fsp = require('fs/promises');
 const ticksToDate = require('ticks-to-date');
 
 const log = (...args) => {
@@ -18,42 +19,70 @@ const log = (...args) => {
 };
 
 class StableDatabaseReader {
-    constructor(filePath, range = {}) {
-        this.fileName = filePath;
-        this.stream = fs.createReadStream(filePath, range);
-        this.offset = range.start || 0;
-        log(`Initialized StableDatabaseReader for ${filePath} with range`, range);
+    constructor(fileHandle, offset = 0, bufferSize = 64 * 1024) {
+        this.fileHandle = fileHandle;
+        this.buffer = Buffer.alloc(bufferSize);
+        this.bufferSize = bufferSize;
+
+        // Where we are in the file globally
+        this.filePointer = offset;
+
+        // Current window state
+        this.bufferStart = 0; // Start offset of the buffer in the file
+        this.bufferEnd = 0; // End offset of the buffer in the file
+        this.cursor = 0; // Current read position relative to this.buffer
+        this.bytesInBuffer = 0;
     }
 
-    async _readBytes(size) {
-        if (size === 0) return Buffer.alloc(0);
+    async _readBytes(length) {
+        // 1. If the request is larger than our buffer size, that's a problem.
+        // (This shouldn't happen with 64KB chunks unless you're reading a huge string)
+        if (length > this.bufferSize) {
+            throw new Error(`Read length ${length} exceeds buffer size ${this.bufferSize}`);
+        }
 
-        return new Promise((resolve, reject) => {
-            const chunk = this.stream.read(size);
-            if (chunk !== null) {
-                this.offset += chunk.length;
-                return resolve(chunk);
-            }
+        // 2. Do we have enough data in the current buffer?
+        if (this.cursor + length > this.bytesInBuffer) {
+            await this._refillBuffer();
+        }
 
-            const onReadable = () => {
-                const chunk = this.stream.read(size);
-                if (chunk !== null) {
-                    this.stream.removeListener('readable', onReadable);
-                    this.stream.removeListener('error', onError);
-                    this.offset += chunk.length;
-                    resolve(chunk);
-                }
-            };
+        // 3. Slice and return
+        const data = this.buffer.subarray(this.cursor, this.cursor + length);
+        this.cursor += length;
+        return data;
+    }
 
-            const onError = err => {
-                this.stream.removeListener('readable', onReadable);
-                this.stream.removeListener('error', onError);
-                reject(err);
-            };
+    async _refillBuffer() {
+        // 1. Calculate what is left over from the previous read
+        const remainingLength = this.bytesInBuffer - this.cursor;
 
-            this.stream.on('readable', onReadable);
-            this.stream.on('error', onError);
-        });
+        // 2. If there's leftover data, copy it to the start of the buffer
+        if (remainingLength > 0) {
+            this.buffer.copy(this.buffer, 0, this.cursor, this.bytesInBuffer);
+        }
+
+        // 3. Read new data directly after the leftover data
+        const { bytesRead } = await this.fileHandle.read(
+            this.buffer,
+            remainingLength, // Write into the buffer AFTER the leftovers
+            this.bufferSize - remainingLength, // Fill the rest of the buffer
+            this.filePointer // Read from where we left off
+        );
+
+        // 4. Reset state
+        this.bytesInBuffer = remainingLength + bytesRead;
+        this.cursor = 0;
+        this.filePointer += bytesRead;
+    }
+
+    async seek(offset) {
+        this.filePointer = offset;
+        this.bufferEnd = 0;
+        this.cursor = 0;
+    }
+
+    get offset() {
+        return this.filePointer - (this.bytesInBuffer - this.cursor);
     }
 
     async readByte() {
@@ -121,7 +150,7 @@ class StableDatabaseReader {
         if (presence === 0x00) return '';
         if (presence !== 0x0b)
             throw new Error(
-                `Invalid presence byte while reading string at position ${this.offset}: Expected 0x00 or 0x0b but found 0x${presence.toString(16)}`
+                `Invalid presence byte while reading string at position ${this.filePointer}: Expected 0x00 or 0x0b but found 0x${presence.toString(16)}`
             );
 
         const stringLength = await this.readULEB128();
@@ -138,7 +167,7 @@ class StableDatabaseReader {
         const float = await this.readSingle();
         if (b1 !== 0x08 || b2 !== 0x0c) {
             throw new Error(
-                `Invalid bytes surrounding int-float pair at position ${this.offset}: Expected 0x08 ... 0x0c but found 0x${b1.toString(16)} ... 0x${b2.toString(16)}`
+                `Invalid bytes surrounding int-float pair at position ${this.filePointer}: Expected 0x08 ... 0x0c but found 0x${b1.toString(16)} ... 0x${b2.toString(16)}`
             );
         }
         return [int, float];
@@ -151,7 +180,7 @@ class StableDatabaseReader {
         const double = await this.readDouble();
         if (b1 !== 0x08 || b2 !== 0x0c) {
             throw new Error(
-                `Invalid bytes surrounding int-float pair at position ${this.offset}: Expected 0x08 ... 0x0c but found 0x${b1.toString(16)} ... 0x${b2.toString(16)}`
+                `Invalid bytes surrounding int-float pair at position ${this.filePointer}: Expected 0x08 ... 0x0c but found 0x${b1.toString(16)} ... 0x${b2.toString(16)}`
             );
         }
         return [int, double];
@@ -169,10 +198,6 @@ class StableDatabaseReader {
         if (ticks === 0n) return null;
         return ticksToDate(Number(ticks));
     }
-
-    close() {
-        this.stream.destroy;
-    }
 }
 
 class StableCollectionsDatabase {
@@ -182,63 +207,34 @@ class StableCollectionsDatabase {
 }
 
 class StableGameDatabase {
-    filePath;
-    data = {};
-    isIndexed = false;
-
     /**
-     * Please use the `open()` method instead of this constructor.
+     * **Please use `StableGameDatabase.open()` instead of this constructor.**
      */
     constructor(filePath) {
         if (!fs.existsSync(filePath)) {
             throw new Error(`File doesn't exist: ${filePath}`);
         }
         this.filePath = filePath;
+        this.data = {};
+        this.beatmapIds = new Set();
+        this.beatmapsetIds = new Set();
+        this.beatmapIndex = [];
         log(`Initialized StableGameDatabase at ${filePath}`);
     }
 
     /**
-     * Index the database to speed up beatmap pagination.
-     */
-    async _index() {
-        const reader = new StableDatabaseReader(this.filePath);
-
-        this.data.version = await reader.readInt();
-        this.data.folderCount = await reader.readInt();
-        this.data.isAccountUnlocked = await reader.readBoolean();
-        this.data.dateUnlocked = await reader.readDateTime();
-        this.data.playerName = await reader.readString();
-        this.data.beatmapCount = await reader.readInt();
-
-        this.beatmapOffsets = [];
-        for (let i = 0; i < this.data.beatmapCount; i++) {
-            const offset = reader.offset;
-            const beatmap = await this._readBeatmap(reader);
-            this.beatmapOffsets.push({
-                offset,
-                md5: beatmap.md5
-            });
-            log(
-                `Indexed beatmap ${i + 1}/${this.data.beatmapCount}: ${beatmap.beatmapId}: ${beatmap.artist} - ${beatmap.title} [${beatmap.version}]`
-            );
-        }
-
-        this.data.userPermissions = await reader.readInt();
-        reader.close();
-
-        log(
-            `Opened and indexed stable osu database version ${this.data.version} at ${this.filePath} with ${this.data.beatmapCount} beatmaps`
-        );
-    }
-
-    /**
-     * Open an osu!standard `osu!.db` database for reading.
+     * Open an osu!standard `osu!.db` database for reading, indexing it in memory to speed up beatmap access. This may take several seconds for large databases.
      * @param {string} filePath Your database file path.
      */
     static async open(filePath) {
         const instance = new StableGameDatabase(filePath);
+        instance.fileHandle = await fsp.open(filePath, 'r');
         await instance._index();
         return instance;
+    }
+
+    _getReader(offset = 0, bufferSize) {
+        return new StableDatabaseReader(this.fileHandle, offset, bufferSize);
     }
 
     async _readBeatmap(reader) {
@@ -352,15 +348,79 @@ class StableGameDatabase {
         return map;
     }
 
+    async _index() {
+        log(`Indexing beatmaps in ${this.filePath}...`);
+        // We're using a very large buffer size here since we know we're
+        // reading the whole file
+        const reader = this._getReader(0, 1024 * 1024 * 10);
+
+        this.data.version = await reader.readInt();
+        this.data.folderCount = await reader.readInt();
+        this.data.isAccountUnlocked = await reader.readBoolean();
+        this.data.dateUnlocked = await reader.readDateTime();
+        this.data.playerName = await reader.readString();
+        this.data.beatmapCount = await reader.readInt();
+
+        for (let i = 0; i < this.data.beatmapCount; i++) {
+            const offset = reader.offset;
+            const beatmap = await this._readBeatmap(reader);
+            this.beatmapIndex.push({
+                offset,
+                md5: beatmap.md5,
+                beatmapId: beatmap.beatmapId
+            });
+            this.beatmapIds.add(beatmap.beatmapId);
+            this.beatmapsetIds.add(beatmap.beatmapsetId);
+        }
+
+        this.data.userPermissions = await reader.readInt();
+
+        log(
+            `Opened and indexed stable osu database version ${this.data.version} at ${this.filePath} with ${this.data.beatmapCount} beatmaps`
+        );
+
+        return this;
+    }
+
+    async _getBeatmapAtOffset(offset) {
+        const reader = this._getReader(offset);
+        const beatmap = await this._readBeatmap(reader);
+        return beatmap;
+    }
+
+    async getBeatmapByHash(md5) {
+        const entry = this.beatmapIndex.find(e => e.md5 == md5);
+        if (!entry) return null;
+        return this._getBeatmapAtOffset(entry.offset);
+    }
+
+    async getBeatmapById(id) {
+        const entry = this.beatmapIndex.find(e => e.beatmapId == id);
+        if (!entry) return null;
+        return this._getBeatmapAtOffset(entry.offset);
+    }
+
+    async getBeatmaps(offset = 0, limit) {
+        limit = limit || this.data.beatmapCount - offset;
+        const cache = this.beatmapIndex[offset];
+        if (!cache) return [];
+        const reader = this._getReader(cache.offset);
+        const beatmaps = [];
+        let i = 0;
+        while (i < limit) {
+            beatmaps.push(await this._readBeatmap(reader));
+            i++;
+        }
+        return beatmaps;
+    }
+
     /**
-     * Get the complete contents of the database as an object.
+     * Dump the entire database as an object. This reads the entire file into memory, so proceed with caution. Consider accessing the `data` property and using the paginated `getBeatmaps()` method when working with large databases.
      * @returns Database contents.
      */
     async dump() {
-        const reader = new StableDatabaseReader(this.filePath);
         const obj = this.data;
-
-        reader.close();
+        obj.beatmaps = await this.getBeatmaps();
         return obj;
     }
 }
