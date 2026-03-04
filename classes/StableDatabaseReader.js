@@ -1,0 +1,186 @@
+const ticksToDate = require('ticks-to-date');
+const { log } = require('../lib/utils');
+
+class StableDatabaseReader {
+    constructor(fileHandle, offset = 0, bufferSize = 64 * 1024) {
+        this.fileHandle = fileHandle;
+        this.buffer = Buffer.alloc(bufferSize);
+        this.bufferSize = bufferSize;
+
+        // Where we are in the file globally
+        this.filePointer = offset;
+
+        // Current window state
+        this.bufferStart = 0; // Start offset of the buffer in the file
+        this.bufferEnd = 0; // End offset of the buffer in the file
+        this.cursor = 0; // Current read position relative to this.buffer
+        this.bytesInBuffer = 0;
+    }
+
+    async _readBytes(length) {
+        // 1. If the request is larger than our buffer size, that's a problem.
+        // (This shouldn't happen with 64KB chunks unless you're reading a huge string)
+        if (length > this.bufferSize) {
+            throw new Error(`Read length ${length} exceeds buffer size ${this.bufferSize}`);
+        }
+
+        // 2. Do we have enough data in the current buffer?
+        if (this.cursor + length > this.bytesInBuffer) {
+            await this._refillBuffer();
+        }
+
+        // 3. Slice and return
+        const data = this.buffer.subarray(this.cursor, this.cursor + length);
+        this.cursor += length;
+        return data;
+    }
+
+    async _refillBuffer() {
+        // 1. Calculate what is left over from the previous read
+        const remainingLength = this.bytesInBuffer - this.cursor;
+
+        // 2. If there's leftover data, copy it to the start of the buffer
+        if (remainingLength > 0) {
+            this.buffer.copy(this.buffer, 0, this.cursor, this.bytesInBuffer);
+        }
+
+        // 3. Read new data directly after the leftover data
+        const { bytesRead } = await this.fileHandle.read(
+            this.buffer,
+            remainingLength, // Write into the buffer AFTER the leftovers
+            this.bufferSize - remainingLength, // Fill the rest of the buffer
+            this.filePointer // Read from where we left off
+        );
+
+        // 4. Reset state
+        this.bytesInBuffer = remainingLength + bytesRead;
+        this.cursor = 0;
+        this.filePointer += bytesRead;
+    }
+
+    async seek(offset) {
+        this.filePointer = offset;
+        this.bufferEnd = 0;
+        this.cursor = 0;
+    }
+
+    get offset() {
+        return this.filePointer - (this.bytesInBuffer - this.cursor);
+    }
+
+    async readByte() {
+        const buf = await this._readBytes(1);
+        return buf.readUInt8(0);
+    }
+
+    async readShort() {
+        const buf = await this._readBytes(2);
+        return buf.readUInt16LE(0);
+    }
+
+    async readInt() {
+        const buf = await this._readBytes(4);
+        return buf.readUInt32LE(0);
+    }
+
+    async readLong() {
+        const buf = await this._readBytes(8);
+        return buf.readBigUInt64LE(0);
+    }
+
+    async readSingle() {
+        const buf = await this._readBytes(4);
+        return buf.readFloatLE(0);
+    }
+
+    async readDouble() {
+        const buf = await this._readBytes(8);
+        return buf.readDoubleLE(0);
+    }
+
+    async readBoolean() {
+        const byte = await this.readByte();
+        return byte !== 0x00;
+    }
+
+    async readULEB128() {
+        let result = 0;
+        let shift = 0;
+
+        while (true) {
+            // Grab the next byte
+            const byte = await this.readByte();
+
+            // Use 0x7f (127) to mask out the MSB and keep only the 7 bits of data
+            // We use (2 ** shift) instead of standard bitwise shift (<<) to prevent
+            // JavaScript from aggressively wrapping into negative 32-bit signed integers.
+            result += (byte & 0x7f) * 2 ** shift;
+
+            // Use 0x80 (128) to check the MSB. If it's 0, we've reached the end of the number.
+            if ((byte & 0x80) === 0) {
+                break;
+            }
+
+            // Prepare to shift the next 7 bits of data higher up
+            shift += 7;
+        }
+
+        return result;
+    }
+
+    async readString() {
+        const presence = await this.readByte();
+        if (presence === 0x00) return '';
+        if (presence !== 0x0b)
+            throw new Error(
+                `Invalid presence byte while reading string at position ${this.filePointer}: Expected 0x00 or 0x0b but found 0x${presence.toString(16)}`
+            );
+
+        const stringLength = await this.readULEB128();
+        if (stringLength === 0) return '';
+
+        const stringBuffer = await this._readBytes(stringLength);
+        return stringBuffer.toString('utf8');
+    }
+
+    async readIntFloatPair() {
+        const b1 = await this.readByte();
+        const int = await this.readInt();
+        const b2 = await this.readByte();
+        const float = await this.readSingle();
+        if (b1 !== 0x08 || b2 !== 0x0c) {
+            throw new Error(
+                `Invalid bytes surrounding int-float pair at position ${this.filePointer}: Expected 0x08 ... 0x0c but found 0x${b1.toString(16)} ... 0x${b2.toString(16)}`
+            );
+        }
+        return [int, float];
+    }
+
+    async readIntDoublePair() {
+        const b1 = await this.readByte();
+        const int = await this.readInt();
+        const b2 = await this.readByte();
+        const double = await this.readDouble();
+        if (b1 !== 0x08 || b2 !== 0x0c) {
+            throw new Error(
+                `Invalid bytes surrounding int-float pair at position ${this.filePointer}: Expected 0x08 ... 0x0c but found 0x${b1.toString(16)} ... 0x${b2.toString(16)}`
+            );
+        }
+        return [int, double];
+    }
+
+    async readTimingPoint() {
+        const bpm = await this.readDouble();
+        const offsetMs = await this.readDouble();
+        const isInherited = !(await this.readBoolean());
+        return { bpm, offsetMs, isInherited };
+    }
+
+    async readDateTime() {
+        const ticks = await this.readLong();
+        if (ticks === 0n) return null;
+        return ticksToDate(Number(ticks));
+    }
+}
+
+module.exports = StableDatabaseReader;
