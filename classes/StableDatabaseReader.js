@@ -1,100 +1,39 @@
+const BufferedReader = require('./BufferedReader');
 const ticksToDate = require('ticks-to-date');
 const { log } = require('../lib/utils');
 
-class StableDatabaseReader {
-    constructor(fileHandle, offset = 0, bufferSize = 64 * 1024) {
-        this.fileHandle = fileHandle;
-        this.buffer = Buffer.alloc(bufferSize);
-        this.bufferSize = bufferSize;
-
-        // Where we are in the file globally
-        this.filePointer = offset;
-
-        // Current window state
-        this.bufferStart = 0; // Start offset of the buffer in the file
-        this.bufferEnd = 0; // End offset of the buffer in the file
-        this.cursor = 0; // Current read position relative to this.buffer
-        this.bytesInBuffer = 0;
-    }
-
-    async _readBytes(length) {
-        // 1. If the request is larger than our buffer size, that's a problem.
-        // (This shouldn't happen with 64KB chunks unless you're reading a huge string)
-        if (length > this.bufferSize) {
-            throw new Error(`Read length ${length} exceeds buffer size ${this.bufferSize}`);
-        }
-
-        // 2. Do we have enough data in the current buffer?
-        if (this.cursor + length > this.bytesInBuffer) {
-            await this._refillBuffer();
-        }
-
-        // 3. Slice and return
-        const data = this.buffer.subarray(this.cursor, this.cursor + length);
-        this.cursor += length;
-        return data;
-    }
-
-    async _refillBuffer() {
-        // 1. Calculate what is left over from the previous read
-        const remainingLength = this.bytesInBuffer - this.cursor;
-
-        // 2. If there's leftover data, copy it to the start of the buffer
-        if (remainingLength > 0) {
-            this.buffer.copy(this.buffer, 0, this.cursor, this.bytesInBuffer);
-        }
-
-        // 3. Read new data directly after the leftover data
-        const { bytesRead } = await this.fileHandle.read(
-            this.buffer,
-            remainingLength, // Write into the buffer AFTER the leftovers
-            this.bufferSize - remainingLength, // Fill the rest of the buffer
-            this.filePointer // Read from where we left off
-        );
-
-        // 4. Reset state
-        this.bytesInBuffer = remainingLength + bytesRead;
-        this.cursor = 0;
-        this.filePointer += bytesRead;
-    }
-
-    async seek(offset) {
-        this.filePointer = offset;
-        this.bufferEnd = 0;
-        this.cursor = 0;
-    }
-
-    get offset() {
-        return this.filePointer - (this.bytesInBuffer - this.cursor);
+class StableDatabaseReader extends BufferedReader {
+    constructor(fileHandle, bufferSize) {
+        super(fileHandle, bufferSize);
     }
 
     async readByte() {
-        const buf = await this._readBytes(1);
+        const buf = await this.read(1);
         return buf.readUInt8(0);
     }
 
     async readShort() {
-        const buf = await this._readBytes(2);
+        const buf = await this.read(2);
         return buf.readUInt16LE(0);
     }
 
     async readInt() {
-        const buf = await this._readBytes(4);
+        const buf = await this.read(4);
         return buf.readUInt32LE(0);
     }
 
     async readLong() {
-        const buf = await this._readBytes(8);
+        const buf = await this.read(8);
         return buf.readBigUInt64LE(0);
     }
 
     async readSingle() {
-        const buf = await this._readBytes(4);
+        const buf = await this.read(4);
         return buf.readFloatLE(0);
     }
 
     async readDouble() {
-        const buf = await this._readBytes(8);
+        const buf = await this.read(8);
         return buf.readDoubleLE(0);
     }
 
@@ -139,7 +78,7 @@ class StableDatabaseReader {
         const stringLength = await this.readULEB128();
         if (stringLength === 0) return '';
 
-        const stringBuffer = await this._readBytes(stringLength);
+        const stringBuffer = await this.read(stringLength);
         return stringBuffer.toString('utf8');
     }
 

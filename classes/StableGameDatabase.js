@@ -1,6 +1,7 @@
 const fs = require('fs');
 const fsp = require('fs/promises');
 const { log } = require('../lib/utils');
+const StableDatabaseReader = require('./StableDatabaseReader');
 
 class StableGameDatabase {
     /**
@@ -30,7 +31,9 @@ class StableGameDatabase {
     }
 
     _getReader(offset = 0, bufferSize) {
-        return new StableDatabaseReader(this.fileHandle, offset, bufferSize);
+        const reader = new StableDatabaseReader(this.fileHandle, bufferSize);
+        reader.seek(offset);
+        return reader;
     }
 
     async _readBeatmap(reader) {
