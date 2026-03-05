@@ -1,6 +1,6 @@
 const BufferedReader = require('./BufferedReader');
 const ticksToDate = require('ticks-to-date');
-const { log } = require('../lib/utils');
+const { log } = require('../../lib/utils');
 
 class StableDatabaseReader extends BufferedReader {
     constructor(fileHandle, bufferSize) {

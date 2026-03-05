@@ -5,13 +5,8 @@
   "license": "Apache-2.0",
   "author": "Kayla Kersting",
   "type": "commonjs",
-  "main": "index.js",
-  "directories": {
-    "test": "test"
-  },
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+  "main": "src/index.js",
+  "scripts": {},
   "dependencies": {
     "ticks-to-date": "^1.0.6"
   }

@@ -1,7 +1,7 @@
 const fs = require('fs');
 const fsp = require('fs/promises');
-const { log } = require('../lib/utils');
-const StableDatabaseReader = require('./StableDatabaseReader');
+const { log } = require('../../lib/utils');
+const StableDatabaseReader = require('../io/StableDatabaseReader');
 
 class StableGameDatabase {
     /**
