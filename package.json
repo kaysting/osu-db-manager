@@ -6,8 +6,11 @@
   "author": "Kayla Kersting",
   "type": "commonjs",
   "main": "src/index.js",
-  "scripts": {},
+  "scripts": {
+    "test": "node test"
+  },
   "dependencies": {
+    "cli-color": "^2.0.4",
     "ticks-to-date": "^1.0.6"
   }
 }

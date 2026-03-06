@@ -30,6 +30,10 @@ module.exports = class StableGameDatabase {
         return instance;
     }
 
+    close() {
+        this.fileHandle.close();
+    }
+
     _getReader(offset = 0, bufferSize) {
         const reader = new StableDatabaseReader(this.fileHandle, bufferSize);
         reader.seek(offset);
