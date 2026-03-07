@@ -4,6 +4,8 @@ const { log } = require('../../../lib/utils');
 const StableDatabaseReader = require('../../io/StableDatabaseReader');
 
 module.exports = class StableGameDatabase {
+    #beatmapIndex;
+
     /**
      * Please use `StableGameDatabase.open()` instead of this constructor.
      */
@@ -15,7 +17,7 @@ module.exports = class StableGameDatabase {
         this.data = {};
         this.beatmapIds = new Set();
         this.beatmapsetIds = new Set();
-        this.beatmapIndex = [];
+        this.#beatmapIndex = [];
         log(`Initialized StableGameDatabase at ${filePath}`);
     }
 
@@ -56,7 +58,7 @@ module.exports = class StableGameDatabase {
         for (let i = 0; i < this.data.beatmapCount; i++) {
             const offset = reader.offset;
             const beatmap = await this.#readBeatmap(reader);
-            this.beatmapIndex.push({
+            this.#beatmapIndex.push({
                 offset,
                 md5: beatmap.md5,
                 beatmapId: beatmap.beatmapId
@@ -191,21 +193,37 @@ module.exports = class StableGameDatabase {
         return beatmap;
     }
 
+    /**
+     * Get a beatmap entry by its md5 hash.
+     * @param {string} md5 Beatmap hash.
+     * @returns Beatmap data.
+     */
     async getBeatmapByHash(md5) {
-        const entry = this.beatmapIndex.find(e => e.md5 == md5);
+        const entry = this.#beatmapIndex.find(e => e.md5 == md5);
         if (!entry) return null;
         return this.#readBeatmapAtOffset(entry.offset);
     }
 
+    /**
+     * Get a beatmap by its online ID. Note that all unsubmitted maps have an ID of 0.
+     * @param {number} id Online beatmap ID.
+     * @returns Beatmap data.
+     */
     async getBeatmapById(id) {
-        const entry = this.beatmapIndex.find(e => e.beatmapId == id);
+        const entry = this.#beatmapIndex.find(e => e.beatmapId == id);
         if (!entry) return null;
         return this.#readBeatmapAtOffset(entry.offset);
     }
 
-    async getBeatmaps(offset = 0, limit) {
+    /**
+     * Get beatmaps in bulk, optionally with pagination.
+     * @param {number} limit Get this many results.
+     * @param {number} offset Skip this many results.
+     * @returns Array of beatmaps.
+     */
+    async getBeatmaps(limit = 0, offset = 0) {
         limit = limit || this.data.beatmapCount - offset;
-        const cache = this.beatmapIndex[offset];
+        const cache = this.#beatmapIndex[offset];
         if (!cache) return [];
         const reader = this.#getReader(cache.offset);
         const beatmaps = [];

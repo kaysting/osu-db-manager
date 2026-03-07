@@ -4,6 +4,7 @@ const api = require('./src');
 process.env.ODBM_VERBOSE = true;
 const stableOsuPath = './.samples/valerus-osu!.db';
 const stableCollectionsPath = './.samples/nikku-collection.db';
+const stableScoresPath = './.samples/kuba-scores.db';
 
 require('./lib/tester')([
     // Stable osu!.db tests
@@ -19,7 +20,7 @@ require('./lib/tester')([
         requires: ['Open osu!.db'],
         f: async db => {
             const count = 20;
-            const maps = await db.getBeatmaps(0, count);
+            const maps = await db.getBeatmaps(count, 0);
             if (!maps || maps.length !== count) {
                 throw new Error(`No maps or invalid amount of maps returned.`);
             }
@@ -78,6 +79,24 @@ require('./lib/tester')([
             if (!collection) throw new Error(`New collection not found :(`);
             newDb.close();
             fs.rmSync(newPath);
+        }
+    },
+    {
+        name: 'Open scores.db',
+        f: async () => {
+            const db = api.StableScoresDatabase.open(stableScoresPath);
+            return db;
+        }
+    },
+    {
+        name: 'Read scores for a map in scores.db',
+        requires: ['Open scores.db'],
+        /** @param {api.StableScoresDatabase} db */
+        f: async db => {
+            const hash = db.getBeatmapHashes(1)[0];
+            const scores = await db.getBeatmapScores(hash);
+
+            db.close();
         }
     }
 ]);

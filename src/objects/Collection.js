@@ -23,11 +23,11 @@ module.exports = class Collection {
 
     /**
      * Get hashes of beatmaps in the collection, optionally paginated.
-     * @param {number} offset Skip this many hashes before getting results.
      * @param {number} limit Get this many hashes and then stop.
+     * @param {number} offset Skip this many hashes before getting results.
      * @returns {string[]} An array of beatmap md5 hashes.
      */
-    getBeatmapHashes(offset = 0, limit = Infinity) {
+    getBeatmapHashes(limit = Infinity, offset = 0) {
         return Array.from(this.#beatmapHashesSet).slice(offset, offset + limit);
     }
 
