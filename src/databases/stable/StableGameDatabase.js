@@ -1,7 +1,7 @@
 const fs = require('fs');
 const fsp = require('fs/promises');
-const { log } = require('../../lib/utils');
-const StableDatabaseReader = require('../io/StableDatabaseReader');
+const { log } = require('../../../lib/utils');
+const StableDatabaseReader = require('../../io/StableDatabaseReader');
 
 module.exports = class StableGameDatabase {
     /**
@@ -26,7 +26,7 @@ module.exports = class StableGameDatabase {
     static async open(filePath) {
         const instance = new StableGameDatabase(filePath);
         instance.fileHandle = await fsp.open(filePath, 'r');
-        await instance._index();
+        await instance.#index();
         return instance;
     }
 
@@ -34,13 +34,47 @@ module.exports = class StableGameDatabase {
         this.fileHandle.close();
     }
 
-    _getReader(offset = 0, bufferSize) {
+    #getReader(offset = 0, bufferSize) {
         const reader = new StableDatabaseReader(this.fileHandle, bufferSize);
         reader.seek(offset);
         return reader;
     }
 
-    async _readBeatmap(reader) {
+    async #index() {
+        log(`Indexing beatmaps in ${this.filePath}...`);
+        // We're using a very large buffer size here since we know we're
+        // reading the whole file
+        const reader = this.#getReader(0, 1024 * 1024 * 10);
+
+        this.data.version = await reader.readInt();
+        this.data.folderCount = await reader.readInt();
+        this.data.isAccountUnlocked = await reader.readBoolean();
+        this.data.dateUnlocked = await reader.readDateTime();
+        this.data.playerName = await reader.readString();
+        this.data.beatmapCount = await reader.readInt();
+
+        for (let i = 0; i < this.data.beatmapCount; i++) {
+            const offset = reader.offset;
+            const beatmap = await this.#readBeatmap(reader);
+            this.beatmapIndex.push({
+                offset,
+                md5: beatmap.md5,
+                beatmapId: beatmap.beatmapId
+            });
+            this.beatmapIds.add(beatmap.beatmapId);
+            this.beatmapsetIds.add(beatmap.beatmapsetId);
+        }
+
+        this.data.userPermissions = await reader.readInt();
+
+        log(
+            `Opened and indexed stable osu database version ${this.data.version} at ${this.filePath} with ${this.data.beatmapCount} beatmaps`
+        );
+
+        return this;
+    }
+
+    async #readBeatmap(reader) {
         const map = {};
 
         if (this.data.version < 20191106) {
@@ -151,79 +185,35 @@ module.exports = class StableGameDatabase {
         return map;
     }
 
-    async _index() {
-        log(`Indexing beatmaps in ${this.filePath}...`);
-        // We're using a very large buffer size here since we know we're
-        // reading the whole file
-        const reader = this._getReader(0, 1024 * 1024 * 10);
-
-        this.data.version = await reader.readInt();
-        this.data.folderCount = await reader.readInt();
-        this.data.isAccountUnlocked = await reader.readBoolean();
-        this.data.dateUnlocked = await reader.readDateTime();
-        this.data.playerName = await reader.readString();
-        this.data.beatmapCount = await reader.readInt();
-
-        for (let i = 0; i < this.data.beatmapCount; i++) {
-            const offset = reader.offset;
-            const beatmap = await this._readBeatmap(reader);
-            this.beatmapIndex.push({
-                offset,
-                md5: beatmap.md5,
-                beatmapId: beatmap.beatmapId
-            });
-            this.beatmapIds.add(beatmap.beatmapId);
-            this.beatmapsetIds.add(beatmap.beatmapsetId);
-        }
-
-        this.data.userPermissions = await reader.readInt();
-
-        log(
-            `Opened and indexed stable osu database version ${this.data.version} at ${this.filePath} with ${this.data.beatmapCount} beatmaps`
-        );
-
-        return this;
-    }
-
-    async _getBeatmapAtOffset(offset) {
-        const reader = this._getReader(offset);
-        const beatmap = await this._readBeatmap(reader);
+    async #readBeatmapAtOffset(offset) {
+        const reader = this.#getReader(offset);
+        const beatmap = await this.#readBeatmap(reader);
         return beatmap;
     }
 
     async getBeatmapByHash(md5) {
         const entry = this.beatmapIndex.find(e => e.md5 == md5);
         if (!entry) return null;
-        return this._getBeatmapAtOffset(entry.offset);
+        return this.#readBeatmapAtOffset(entry.offset);
     }
 
     async getBeatmapById(id) {
         const entry = this.beatmapIndex.find(e => e.beatmapId == id);
         if (!entry) return null;
-        return this._getBeatmapAtOffset(entry.offset);
+        return this.#readBeatmapAtOffset(entry.offset);
     }
 
     async getBeatmaps(offset = 0, limit) {
         limit = limit || this.data.beatmapCount - offset;
         const cache = this.beatmapIndex[offset];
         if (!cache) return [];
-        const reader = this._getReader(cache.offset);
+        const reader = this.#getReader(cache.offset);
         const beatmaps = [];
         let i = 0;
         while (i < limit) {
-            beatmaps.push(await this._readBeatmap(reader));
+            beatmaps.push(await this.#readBeatmap(reader));
             i++;
         }
         return beatmaps;
-    }
-
-    /**
-     * Dump the entire database as an object. This reads the entire file into memory, so proceed with caution. Consider accessing the `data` property and using the paginated `getBeatmaps()` method when working with large databases.
-     * @returns Database contents.
-     */
-    async dump() {
-        const obj = this.data;
-        obj.beatmaps = await this.getBeatmaps();
-        return obj;
     }
 };

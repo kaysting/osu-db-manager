@@ -1,3 +1,4 @@
+const fs = require('fs');
 const api = require('./src');
 
 process.env.ODBM_VERBOSE = true;
@@ -38,28 +39,43 @@ const tests = [
         name: 'List collections in collections.db',
         requires: ['Open collections.db'],
         f: async db => {
-            if (!db.data.collections || db.data.collections.length == 0) {
+            if (!db.collections || db.collections.length == 0) {
                 throw new Error(`No collections read`);
             }
             return db;
         }
     },
     {
-        name: 'Get a collection by index from collections.db',
+        name: 'Read a collection',
         requires: ['Open collections.db'],
         f: async db => {
-            const collection = db.getCollectionByIndex(2);
-            if (!collection) throw new Error(`Collection at index 2 doesn't exist`);
+            const index = 4;
+            const collection = db.collections[index];
+            if (!collection) throw new Error(`Collection at index ${index} doesn't exist`);
             return db;
         }
     },
     {
-        name: 'Get a collection by name substring from collections.db',
+        name: 'Add a new collection',
         requires: ['Open collections.db'],
         f: async db => {
-            const collection = db.getCollectionsByName('circle');
-            if (!collection) throw new Error(`Collection with name containing circle doesn't exist`);
-            db.close();
+            // Steal some maps from a few other collections
+            const hashes = [...db.collections[1].getBeatmapHashes(0, 5), db.collections[3].getBeatmapHashes(2, 4)];
+            const collection = db.createCollection('meow meow meow', hashes);
+            return db;
+        }
+    },
+    {
+        name: 'Write altered collections.db and read to verify changes',
+        requires: ['Open collections.db'],
+        f: async db => {
+            const newPath = './test-collections.db';
+            await db.writeChanges(newPath);
+
+            const newDb = await api.StableCollectionsDatabase.open(newPath);
+            const collection = newDb.getCollectionByName('meow meow meow');
+            if (!collection) throw new Error(`New collection not found :(`);
+            fs.rmSync(newPath);
         }
     }
 ];

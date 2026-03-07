@@ -2,6 +2,10 @@ const BufferedReader = require('./BufferedReader');
 const ticksToDate = require('ticks-to-date');
 
 module.exports = class StableDatabaseReader extends BufferedReader {
+    /**
+     * @param {fs.promises.FileHandle} fileHandle The open file handle to read from.
+     * @param {number} bufferSize Size in bytes before to keep in memory at a time.
+     */
     constructor(fileHandle, bufferSize) {
         super(fileHandle, bufferSize);
     }
@@ -71,7 +75,7 @@ module.exports = class StableDatabaseReader extends BufferedReader {
         if (presence === 0x00) return '';
         if (presence !== 0x0b)
             throw new Error(
-                `Invalid presence byte while reading string at position ${this.filePointer}: Expected 0x00 or 0x0b but found 0x${presence.toString(16)}`
+                `Invalid presence byte while reading string at position ${this.offset}: Expected 0x00 or 0x0b but found 0x${presence.toString(16)}`
             );
 
         const stringLength = await this.readULEB128();

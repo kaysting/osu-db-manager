@@ -9,9 +9,9 @@
  *
  */
 
-const StableGameDatabase = require('./databases/StableGameDatabase');
-const StableCollectionsDatabase = require('./databases/StableCollectionsDatabase');
-const StableScoresDatabase = require('./databases/StableScoresDatabase');
+const StableGameDatabase = require('./databases/stable/StableGameDatabase');
+const StableCollectionsDatabase = require('./databases/stable/StableCollectionsDatabase');
+const StableScoresDatabase = require('./databases/stable/StableScoresDatabase');
 
 module.exports = {
     StableGameDatabase,
