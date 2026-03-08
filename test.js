@@ -127,12 +127,24 @@ require('./lib/tester')([
         }
     },
     {
-        name: 'Read maps from lazer realm',
+        name: 'Read maps sequentially from lazer realm',
         requires: ['Open lazer realm db'],
         /** @param {api.LazerRealmDatabase} db */
         f: async db => {
-            const maps = await db.getBeatmaps(1, 50);
-            console.log(maps);
+            const maps = await db.getBeatmaps(10, 50);
+            if (!maps || maps.length !== 10) throw new Error(`Invalid amount of maps returned`);
+            if (!maps[0].hash) throw new Error(`Invalid map data returned!`);
+            return { db, hash: maps[1].hash, id: maps[3].id };
+        }
+    },
+    {
+        name: 'Read a map by hash and id from lazer realm',
+        requires: ['Open lazer realm db'],
+        f: async ({ db, hash, id }) => {
+            const mapByHash = await db.getBeatmapByHash(hash);
+            const mapById = await db.getBeatmapById(id);
+            if (!mapByHash?.hash || !mapById?.hash) throw new Error(`Failed to get map(s)`);
+            return db;
         }
     }
 ]);
