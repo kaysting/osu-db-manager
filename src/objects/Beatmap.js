@@ -9,6 +9,21 @@ module.exports = class Beatmap {
      * @param {Object} d Raw data.
      */
     constructor(d = {}) {
+        // --- LAZER TO STABLE DATA TRANSLATION ---
+        // Inject Lazer's nested properties into the flat structure expected by the sub-classes
+        d.beatmapsetId = d.beatmapsetId ?? d.BeatmapSet?.OnlineID;
+        d.artist = d.artist ?? d.Metadata?.Artist;
+        d.artistUnicode = d.artistUnicode ?? d.Metadata?.ArtistUnicode;
+        d.title = d.title ?? d.Metadata?.Title;
+        d.titleUnicode = d.titleUnicode ?? d.Metadata?.TitleUnicode;
+        d.source = d.source ?? d.Metadata?.Source;
+        d.tags = d.tags ?? d.Metadata?.Tags;
+        d.mapper = d.mapper ?? d.Metadata?.Author?.Username;
+
+        // Derive 'isPlayed' from Lazer's LastPlayed date
+        d.isPlayed = d.isPlayed ?? (d.LastPlayed !== undefined ? !!d.LastPlayed : null);
+        d.localOffset = d.localOffset ?? d.UserSettings?.Offset;
+
         /**
          * Beatmapset metadata. Contains data relevant to all difficulties of the set that this beatmap belongs to.
          * @type {BeatmapSet}
@@ -26,12 +41,12 @@ module.exports = class Beatmap {
          * The MD5 hash of this beatmap. This value serves as the beatmap's truly unique identifier, separate from its online ID.
          * @type {string|null}
          */
-        this.hash = d.md5 ?? d.hash ?? null;
+        this.hash = d.MD5Hash ?? d.md5 ?? d.hash ?? null;
         /**
          * The name of the audio file for this map.
          * @type {string}
          */
-        this.audioFileName = d.audioFileName ?? '';
+        this.audioFileName = d.audioFileName ?? d.Metadata?.AudioFile ?? '';
         /**
          * The name of the `.osu` file for this map.
          *
@@ -43,7 +58,7 @@ module.exports = class Beatmap {
          * The online ID for this specific beatmap difficulty. `0` if unsubmitted.
          * @type {number}
          */
-        this.id = d.beatmapId ?? 0;
+        this.id = d.beatmapId ?? d.OnlineID ?? 0;
 
         /**
          * The game mode/ruleset of this map.
@@ -51,13 +66,13 @@ module.exports = class Beatmap {
          * Short names for custom rulesets in lazer should appear here, though it's untested.
          * @type {'osu'|'taiko'|'catch'|'mania'}
          */
-        this.mode = d.modeString ?? d.mode ?? 'osu';
+        this.mode = d.modeString ?? d.Ruleset?.ShortName ?? d.mode ?? 'osu';
 
         /**
          * Version name. This is the name of the individual beatmap difficulty, like Easy, Hard, Insane, etc.
          * @type {string}
          */
-        this.version = d.version ?? '';
+        this.version = d.version ?? d.DifficultyName ?? '';
 
         /**
          * Map ranked status.
@@ -71,14 +86,15 @@ module.exports = class Beatmap {
          * This is present for all modes and equates to the mode's primary object.
          * @type {number}
          */
-        this.countCircles = d.countCircles ?? 0;
+        this.countCircles =
+            d.countCircles ?? (d.TotalObjectCount !== undefined ? d.TotalObjectCount - d.EndTimeObjectCount : 0);
         /**
          * The number of sliders in this map, or a combined count of sliders and spinners if reading from lazer.
          *
          * This is present for all modes and equates to the mode's secondary/hold type object.
          * @type {number}
          */
-        this.countSliders = d.countSliders ?? 0;
+        this.countSliders = d.countSliders ?? d.EndTimeObjectCount ?? 0;
         /**
          * The number of spinners in this map, or always `0` if reading from lazer.
          *
@@ -91,22 +107,22 @@ module.exports = class Beatmap {
          * Circle size, or key count in mania.
          * @type {number}
          */
-        this.cs = d.cs ?? 0;
+        this.cs = d.cs ?? d.Difficulty?.CircleSize ?? 0;
         /**
          * Approach rate.
          * @type {number}
          */
-        this.ar = d.ar ?? 0;
+        this.ar = d.ar ?? d.Difficulty?.ApproachRate ?? 0;
         /**
          * Overall difficulty (accuracy).
          * @type {number}
          */
-        this.od = d.od ?? 0;
+        this.od = d.od ?? d.Difficulty?.OverallDifficulty ?? 0;
         /**
          * HP drain.
          * @type {number}
          */
-        this.hp = d.hp ?? 0;
+        this.hp = d.hp ?? d.Difficulty?.DrainRate ?? 0;
 
         /**
          * Mania scroll speed.
@@ -120,18 +136,18 @@ module.exports = class Beatmap {
          * The nomod star rating (difficulty) of this map.
          * @type {number}
          */
-        this.starRating = d.starRating ?? 0;
+        this.starRating = d.starRating ?? d.StarRating ?? 0;
 
         /**
          * The length of the map in milliseconds, not counting breaks. Equal to `totalTimeMs` if reading from lazer.
          * @type {number}
          */
-        this.drainTimeMs = d.drainTimeMs ?? (d.drainTimeSecs ? d.drainTimeSecs * 1000 : null) ?? 0;
+        this.drainTimeMs = d.drainTimeMs ?? (d.drainTimeSecs ? d.drainTimeSecs * 1000 : null) ?? d.Length ?? 0;
         /**
          * The length of the map in milliseconds from start to end.
          * @type {number}
          */
-        this.totalTimeMs = d.totalTimeMs ?? (d.totalTimeSecs ? d.totalTimeSecs * 1000 : null) ?? 0;
+        this.totalTimeMs = d.totalTimeMs ?? (d.totalTimeSecs ? d.totalTimeSecs * 1000 : null) ?? d.Length ?? 0;
         /**
          * The audio offset in milliseconds that the preview point is placed at.
          *
@@ -144,17 +160,17 @@ module.exports = class Beatmap {
          * The date this map was last modified locally.
          * @type {Date}
          */
-        this.dateLastModified = d.dateLastModified ?? Date.now();
+        this.dateLastModified = d.dateLastModified ?? d.LastLocalUpdate ?? d.BeatmapSet?.DateAdded ?? new Date();
         /**
          * The date this map was last synced with the osu! servers.
          * @type {Date|null}
          */
-        this.dateLastSynced = d.dateLastSynced ?? null;
+        this.dateLastSynced = d.dateLastSynced ?? d.LastOnlineUpdate ?? null;
         /**
          * The date this map was last played by the user.
          * @type {Date|null}
          */
-        this.dateLastPlayed = d.dateLastPlayed ?? null;
+        this.dateLastPlayed = d.dateLastPlayed ?? d.LastPlayed ?? null;
 
         /**
          * Online offset configured by the mapper.

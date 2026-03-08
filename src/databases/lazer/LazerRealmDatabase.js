@@ -50,57 +50,8 @@ module.exports = class LazerRealmDatabase {
             4: 'loved'
         };
         return mapsSliced.map(m => {
-            return new Beatmap({
-                // Base Map Properties
-                md5: m.MD5Hash,
-                beatmapId: m.OnlineID,
-                version: m.DifficultyName,
-                starRating: m.StarRating,
-                bpm: m.BPM,
-
-                // Lazer stores length in milliseconds as a double
-                drainTimeMs: m.Length,
-                totalTimeMs: m.Length,
-
-                // Lazer's ruleset object
-                modeString: m.Ruleset?.ShortName || 'osu',
-
-                // Difficulty Sub-object
-                cs: m.Difficulty?.CircleSize,
-                ar: m.Difficulty?.ApproachRate,
-                od: m.Difficulty?.OverallDifficulty,
-                hp: m.Difficulty?.DrainRate,
-
-                // BeatmapSet and Metadata Sub-objects
-                beatmapsetId: m.BeatmapSet?.OnlineID,
-                title: m.Metadata?.Title,
-                titleUnicode: m.Metadata?.TitleUnicode,
-                artist: m.Metadata?.Artist,
-                artistUnicode: m.Metadata?.ArtistUnicode,
-                mapper: m.Metadata?.Author?.Username,
-                source: m.Metadata?.Source,
-                tags: m.Metadata?.Tags,
-                audioFileName: m.Metadata?.AudioFile,
-
-                // User Settings Sub-object
-                localOffset: m.UserSettings?.Offset,
-
-                // Dates
-                dateLastModified: m.LastLocalUpdate ?? m.BeatmapSet?.DateAdded,
-                dateLastSynced: m.LastOnlineUpdate,
-                dateLastPlayed: m.LastPlayed,
-
-                // Played State
-                isPlayed: !!m.LastPlayed,
-
-                // Object Counts
-                countCircles: m.TotalObjectCount - m.EndTimeObjectCount,
-                countSliders: m.EndTimeObjectCount, // Best approximation for Lazer
-                countSpinners: 0,
-
-                // Ranked Status
-                rankedStatusString: lazerStatuses[m.Status] || 'unknown'
-            });
+            m.rankedStatusString = lazerStatuses[m.Status] || 'unknown';
+            return new Beatmap(m);
         });
     }
 

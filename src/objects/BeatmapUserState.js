@@ -8,13 +8,17 @@ module.exports = class BeatmapUserState {
          * Has the user played this map?
          * @type {boolean}
          */
-        this.isPlayed = (d.isUnplayed !== undefined ? !!d.isUnplayed : null) ?? d.isPlayed ?? false;
+        this.isPlayed =
+            (d.isUnplayed !== undefined ? !d.isUnplayed : null) ??
+            (d.LastPlayed !== undefined ? !!d.LastPlayed : null) ??
+            d.isPlayed ??
+            false;
 
         /**
          * Local offset.
          * @type {number}
          */
-        this.offset = d.localOffset ?? 0;
+        this.offset = d.localOffset ?? d.UserSettings?.Offset ?? 0;
 
         /**
          * Is the user ignoring custom hitsounds on this map?
@@ -23,6 +27,7 @@ module.exports = class BeatmapUserState {
          * @type {boolean}
          */
         this.areCustomHitsoundsIgnored = d.areHitsoundsIgnored ?? false;
+
         /**
          * Is the user ignoring custom skins on this map?
          *
@@ -30,6 +35,7 @@ module.exports = class BeatmapUserState {
          * @type {boolean}
          */
         this.areSkinsIgnored = d.areSkinsIgnored ?? false;
+
         /**
          * Has the user disabled storyboards?
          *
@@ -37,6 +43,7 @@ module.exports = class BeatmapUserState {
          * @type {boolean}
          */
         this.isStoryboardDisabled = d.isStoryboardDisabled ?? false;
+
         /**
          * Has the user disabled video?
          *
@@ -44,6 +51,7 @@ module.exports = class BeatmapUserState {
          * @type {boolean}
          */
         this.isVideoDisabled = d.isVideoDisabled ?? false;
+
         /**
          * Has the user overridden the visuals of this map?
          *

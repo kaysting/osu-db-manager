@@ -11,42 +11,49 @@ module.exports = class BeatmapSet {
          *
          * Try to rely on individual beatmap IDs instead of this value.
          */
-        this.id = d.beatmapsetId ?? 0;
+        this.id = d.beatmapsetId ?? d.BeatmapSet?.OnlineID ?? 0;
+
         /**
          * Song artist, exclusively Latin characters.
          * @type {string}
          */
-        this.artist = d.artist ?? 'Unknown Artist';
+        this.artist = d.artist ?? d.Metadata?.Artist ?? '';
+
         /**
          * Song artist in unicode. May contain characters from other writing systems.
          * @type {string}
          */
-        this.artistUnicode = d.artistUnicode ?? 'Unknown Artist';
+        this.artistUnicode = d.artistUnicode ?? d.Metadata?.ArtistUnicode ?? '';
+
         /**
          * Song title, exclusively Latin characters.
          * @type {string}
          */
-        this.title = d.title ?? 'Untitled';
+        this.title = d.title ?? d.Metadata?.Title ?? '';
+
         /**
          * Song title in unicode. May contain characters from other writing systems.
          * @type {string}
          */
-        this.titleUnicode = d.titleUnicode ?? 'Untitled';
+        this.titleUnicode = d.titleUnicode ?? d.Metadata?.TitleUnicode ?? '';
+
         /**
          * Song source.
          * @type {string}
          */
-        this.source = d.source ?? '';
+        this.source = d.source ?? d.Metadata?.Source ?? '';
+
         /**
          * Map tags.
          * @type {string}
          */
-        this.tags = d.tags ?? '';
+        this.tags = d.tags ?? d.Metadata?.Tags ?? '';
+
         /**
          * The name of the player who created this map.
          * @type {string}
          */
-        this.mapperName = d.mapper ?? '';
+        this.mapperName = d.mapper ?? d.Metadata?.Author?.Username ?? '';
 
         /**
          * The name of the folder that contains this beatmapset's map files.
