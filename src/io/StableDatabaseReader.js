@@ -10,6 +10,9 @@ module.exports = class StableDatabaseReader extends BufferedReader {
         super(fileHandle, bufferSize);
     }
 
+    // Basic data types
+    // Written by Gemini
+
     async readByte() {
         const buf = await this.read(1);
         return buf.readUInt8(0);
@@ -69,6 +72,8 @@ module.exports = class StableDatabaseReader extends BufferedReader {
 
         return result;
     }
+
+    // Complex data types
 
     async readString() {
         const presence = await this.readByte();

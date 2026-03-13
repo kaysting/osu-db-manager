@@ -1,4 +1,3 @@
-// src/io/StableDatabaseWriter.js
 const BufferedWriter = require('./BufferedWriter');
 
 module.exports = class StableDatabaseWriter extends BufferedWriter {
@@ -9,6 +8,8 @@ module.exports = class StableDatabaseWriter extends BufferedWriter {
     constructor(fileHandle, bufferSize) {
         super(fileHandle, bufferSize);
     }
+
+    // Writer methods written by Gemini
 
     async writeByte(val) {
         const buf = Buffer.allocUnsafe(1);

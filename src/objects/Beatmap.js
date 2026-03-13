@@ -1,5 +1,3 @@
-// src/objects/Beatmap.js
-
 const BeatmapSet = require('./BeatmapSet');
 const BeatmapUserState = require('./BeatmapUserState');
 
@@ -9,21 +7,6 @@ module.exports = class Beatmap {
      * @param {Object} d Raw data.
      */
     constructor(d = {}) {
-        // --- LAZER TO STABLE DATA TRANSLATION ---
-        // Inject Lazer's nested properties into the flat structure expected by the sub-classes
-        d.beatmapsetId = d.beatmapsetId ?? d.BeatmapSet?.OnlineID;
-        d.artist = d.artist ?? d.Metadata?.Artist;
-        d.artistUnicode = d.artistUnicode ?? d.Metadata?.ArtistUnicode;
-        d.title = d.title ?? d.Metadata?.Title;
-        d.titleUnicode = d.titleUnicode ?? d.Metadata?.TitleUnicode;
-        d.source = d.source ?? d.Metadata?.Source;
-        d.tags = d.tags ?? d.Metadata?.Tags;
-        d.mapper = d.mapper ?? d.Metadata?.Author?.Username;
-
-        // Derive 'isPlayed' from Lazer's LastPlayed date
-        d.isPlayed = d.isPlayed ?? (d.LastPlayed !== undefined ? !!d.LastPlayed : null);
-        d.localOffset = d.localOffset ?? d.UserSettings?.Offset;
-
         /**
          * Beatmapset metadata. Contains data relevant to all difficulties of the set that this beatmap belongs to.
          * @type {BeatmapSet}
